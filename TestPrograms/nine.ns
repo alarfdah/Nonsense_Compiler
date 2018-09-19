@@ -1,0 +1,10 @@
+begin;
+a = 4;
+b = 2;
+c = a * b + a ^ 3;
+d = b ^ a;
+output(a);
+output(b);
+output(c);
+output(d);
+end;

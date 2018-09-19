@@ -1,0 +1,6 @@
+begin;
+a = 6;
+b = 7;
+output(a);
+output(b);
+end;

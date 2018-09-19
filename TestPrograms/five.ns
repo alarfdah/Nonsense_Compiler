@@ -1,0 +1,8 @@
+begin;
+a = -6;
+b = 9;
+c = a + b * a - b / 3;
+output(a);
+output(b);
+output(c);
+end;

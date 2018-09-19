@@ -1,0 +1,244 @@
+/**
+ * JavaCC file
+ */
+ 
+options {
+  JDK_VERSION = "1.8";
+}
+
+PARSER_BEGIN(NonsenseParser)
+package nonsense;
+
+import java.util.HashMap;
+
+public final class NonsenseParser {
+
+	public static String register[] = { "%eax", "%ebx", "%ecx", "%edx", "%esi", "%edi" };
+	public static int regInUse[] = { 0, 0, 0, 0, 0, 0 };
+	public static int offset = 4;
+	public static HashMap<String, Integer> map;
+	
+	public static void main(String args[]) { 
+	    NonsenseParser parser;
+	    java.io.InputStream input;
+	
+	    if (args.length==1) {
+	    
+	      try {
+	        input = new java.io.FileInputStream(args[args.length-1]);
+	      } catch (java.io.FileNotFoundException e) {
+	        System.out.println("File not found.");
+	        return;
+	      }
+	      
+	    } 
+	    else {
+	      System.out.println("Usage: nsc <inputfile>");
+	      return;
+	    }
+	    try {
+	      parser = new NonsenseParser(input);
+	      System.out.println("\t.intel_syntax\n\t.section .rodata");
+	      System.out.println(".io_format:\n\t.string \"%d\\12\\0\"");
+	      System.out.println("\t.text\n\t.global main;\n\t.type main, @function");
+	      System.out.println("main:\n\tpush %ebp\n\tmov %ebp, %esp\n\tsub %esp, 64");
+	      System.out.println("\nMY_CODE_START\n");
+	      map = new HashMap<String, Integer>();
+	      parser.program();
+	      System.out.println("\nMY_CODE_END\n");
+	      System.out.println("leave\nret");
+	    } catch (ParseException e) {
+	      System.err.println("Syntax Error: "+e.getMessage());
+	    }
+	}
+	
+}
+
+PARSER_END(NonsenseParser)
+
+SKIP :
+{
+ 	" "
+|	"\r"
+|	"\t"
+|	"\n"
+} 
+
+TOKEN : /* keywords */
+{
+	<BEGIN: "begin">
+    | <END: "end">
+    | <OUTPUT: "output">
+}
+
+TOKEN : /* other lexical tokens */
+{
+ <EQ: "=">
+| <SEMICOLON: ";">
+| <LPAREN: "(">
+| <RPAREN: ")">
+| <PLUS: "+">
+| <MINUS: "-">
+| <TIMES: "*">
+| <DIVIDE: "/">
+| <EXP: "^">
+| <#DIGIT: ["0" - "9"] >
+| <#ALPHA: ["a" - "z"] | ["A" - "Z"] >
+| <ID: <ALPHA> (<ALPHA> | <DIGIT>)*>
+| <INT: "0" | ["1" - "9"](<DIGIT>)* >
+}
+
+void program(): {}
+{
+   <BEGIN> <SEMICOLON> 
+   
+   ( stmt() )*
+
+   <END> <SEMICOLON>
+    
+}
+
+void stmt() : {}
+
+{
+	( 
+		assignment()
+  		| output()
+	)
+	<SEMICOLON>
+
+}
+
+void assignment() : { Token x,y,z; String ret; int i = 0; }
+{
+  
+  (
+    x = <ID>
+    <EQ>
+    expr()
+    {
+      for (i = 1; i < 6; i++) {
+		if (regInUse[i] == 1) {
+		  System.out.println("mov dword ptr [%ebp-" + offset + "], " + register[i]);
+		  map.put(x.image, offset);
+		  regInUse[i] = 0;
+		  offset += 4;
+		  break;
+		}
+      }  
+    }
+  )
+}
+
+void output() : { Token x = null; String ret; }
+{
+	<OUTPUT> <LPAREN>
+	(
+	 ret = expr()
+	) <RPAREN>
+	{
+	  System.out.println("\npush dword ptr [%ebp-" + map.get(ret) + "]\npush offset flat:.io_format");
+	  System.out.println("call printf\nadd %esp, 8\n");
+	}
+}
+
+
+String expr() : { String ret; }
+{
+  (    ret = term()
+    { return ret; }
+  )
+  (
+    LOOKAHEAD(2)
+    ret = addOp()
+    { System.out.println("plus" + ret); }
+    term()
+   )* 
+} 
+
+String term() : { String ret; }
+{
+   (
+     ret = nterm()
+     { return ret; }
+   ) ( LOOKAHEAD(2) mulOp() nterm() )*
+  
+}
+
+String nterm() : { String ret; }
+{
+	(<MINUS>)?
+	(
+	 ret = eterm()
+	  { return ret; }
+	)
+}
+
+String eterm() : { String ret; }
+{
+	(	  ret = factor()
+	  { return ret; }
+	) ( <EXP> eterm() )?
+}
+
+String factor() : { Token x = null , y = null; int i = 0; String reg = null;}
+{
+  (    x = <INT>
+    {
+      for (i = 1; i < 6; i++) {
+		if (regInUse[i] == 0) {
+		  regInUse[i] = 1;
+		  reg = register[i];
+		  break;
+		}
+      }  
+      System.out.println("mov " + reg + ", " + x);
+      return x.image;
+	}
+  ) 
+  |
+  (
+    y = <ID>
+    {
+      return y.image;
+    }
+  )
+  | <LPAREN> expr() <RPAREN>
+  
+}
+
+
+String addOp() : { Token x = null; }
+{
+	(
+	  x = <PLUS>
+	  {
+	    System.out.println("addOp() = " + x);
+	    return x.image;
+	  }
+	) 
+	|
+	(
+	  x = <MINUS>
+	  {
+	    return x.image;
+	  }
+	)
+}
+
+String mulOp() : { Token x = null; }
+{
+	(	  x = <TIMES>
+	  {
+	    return x.image;
+	  }
+	)
+	|
+	(	  x = <DIVIDE>
+	  {
+	    return x.image;
+	  }
+	)
+}
+
+

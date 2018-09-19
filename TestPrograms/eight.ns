@@ -1,0 +1,12 @@
+begin;
+a = 6;
+b = 9;
+output(a);
+output(b);
+c = a + b * a - b / 3;
+output(c);
+d = a * b * b - c;
+e = a + b - c + d;
+output(d);
+output(e);
+end;
