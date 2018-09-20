@@ -8,7 +8,7 @@ public final class NonsenseParser implements NonsenseParserConstants {
         public static String register[] = { "%eax", "%ebx", "%ecx", "%edx", "%esi", "%edi" };
         public static int regInUse[] = { 0, 0, 0, 0, 0, 0 };
         public static int offset = 4;
-        public static HashMap<String, Integer> mapRegOffset;
+        public static HashMap<String, Integer> map;
 
         public static void main(String args[]) {
             NonsenseParser parser;
@@ -35,7 +35,7 @@ public final class NonsenseParser implements NonsenseParserConstants {
               System.out.println("\u005ct.text\u005cn\u005ct.global main;\u005cn\u005ct.type main, @function");
               System.out.println("main:\u005cn\u005ctpush %ebp\u005cn\u005ctmov %ebp, %esp\u005cn\u005ctsub %esp, 64");
               System.out.println("\u005cnMY_CODE_START\u005cn");
-              mapRegOffset = new HashMap<String, Integer>();
+              map = new HashMap<String, Integer>();
               parser.program();
               System.out.println("\u005cnMY_CODE_END\u005cn");
               System.out.println("leave\u005cnret");
@@ -88,7 +88,7 @@ public final class NonsenseParser implements NonsenseParserConstants {
       for (i = 1; i < 6; i++) {
                 if (regInUse[i] == 1) {
                   System.out.println("mov dword ptr [%ebp-" + offset + "], " + register[i]);
-                  mapRegOffset.put(x.image, offset);
+                  map.put(x.image, offset);
                   regInUse[i] = 0;
                   offset += 4;
                   break;
@@ -102,7 +102,7 @@ public final class NonsenseParser implements NonsenseParserConstants {
     jj_consume_token(LPAREN);
     ret = expr();
     jj_consume_token(RPAREN);
-          System.out.println("\u005cnpush dword ptr [%ebp-" + mapRegOffset.get(ret) + "]\u005cnpush offset flat:.io_format");
+          System.out.println("\u005cnpush dword ptr [%ebp-" + map.get(ret) + "]\u005cnpush offset flat:.io_format");
           System.out.println("call printf\u005cnadd %esp, 8\u005cn");
   }
 
@@ -119,8 +119,8 @@ public final class NonsenseParser implements NonsenseParserConstants {
       addSub = addOp();
       y = term();
            System.out.println();
-           if (mapRegOffset.containsKey(x)) {
-             if (mapRegOffset.containsKey(y)) {
+           if (map.containsKey(x)) {
+             if (map.containsKey(y)) {
                // Finds an empty register
                for (i = 1; i < 6; i++) {
                  if (regInUse[i] == 0) {
@@ -129,14 +129,14 @@ public final class NonsenseParser implements NonsenseParserConstants {
                    break;
                  }
                }
-               System.out.println("mov " + reg + ", dword ptr [%ebp-" + mapRegOffset.get(x) + "]");
-                   System.out.println(addSub + " " + reg + ", dword ptr [%ebp-" + mapRegOffset.get(y) + "]");
+               System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+                   System.out.println(addSub + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
              } else {
-                   System.out.println(addSub + " " + y + ", dword ptr [%ebp-" + mapRegOffset.get(x) + "]");
+                   System.out.println(addSub + " " + y + ", dword ptr [%ebp-" + map.get(x) + "]");
              }
            } else {
-             if (mapRegOffset.containsKey(y)) {
-               System.out.println(addSub + " " + x + ", dword ptr [%ebp-" + mapRegOffset.get(y) + "]");
+             if (map.containsKey(y)) {
+               System.out.println(addSub + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
              } else {
                System.out.println(addSub + " " + x + ", " + y);
              }
@@ -159,8 +159,8 @@ public final class NonsenseParser implements NonsenseParserConstants {
       mulDiv = mulOp();
       y = nterm();
            System.out.println();
-           if (mapRegOffset.containsKey(x)) {
-             if (mapRegOffset.containsKey(y)) {
+           if (map.containsKey(x)) {
+             if (map.containsKey(y)) {
                // Finds an empty register
                for (i = 1; i < 6; i++) {
                  if (regInUse[i] == 0) {
@@ -169,15 +169,15 @@ public final class NonsenseParser implements NonsenseParserConstants {
                    break;
                  }
                }
-               System.out.println("mov " + reg + ", dword ptr [%ebp-" + mapRegOffset.get(x) + "]");
-                   System.out.println(mulDiv + " " + reg + ", dword ptr [%ebp-" + mapRegOffset.get(y) + "]");
+               System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+                   System.out.println(mulDiv + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
              } else {
-                   System.out.println(mulDiv + " " + y + ", dword ptr [%ebp-" + mapRegOffset.get(x) + "]");
+                   System.out.println(mulDiv + " " + y + ", dword ptr [%ebp-" + map.get(x) + "]");
                    reg = y;
              }
            } else {
-             if (mapRegOffset.containsKey(y)) {
-               System.out.println(mulDiv + " " + x + ", dword ptr [%ebp-" + mapRegOffset.get(y) + "]");
+             if (map.containsKey(y)) {
+               System.out.println(mulDiv + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
              } else {
                System.out.println(mulDiv + " " + x + ", " + y);
              }
