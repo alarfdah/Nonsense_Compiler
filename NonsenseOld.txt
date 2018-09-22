@@ -1,0 +1,341 @@
+/**
+ * JavaCC file
+ */
+ 
+options {
+  JDK_VERSION = "1.8";
+}
+
+PARSER_BEGIN(NonsenseParser)
+package nonsense;
+
+import java.util.HashMap;
+
+public final class NonsenseParser {
+
+	public static String register[] = { "%eax", "%ebx", "%ecx", "%edx", "%esi", "%edi" };
+	public static int regInUse[] = { 0, 0, 0, 0, 0, 0 };
+	public static int offset = 4;
+	public static HashMap<String, Integer> map;
+	
+	public static void main(String args[]) { 
+	    NonsenseParser parser;
+	    java.io.InputStream input;
+	
+	    if (args.length==1) {
+	    
+	      try {
+	        input = new java.io.FileInputStream(args[args.length-1]);
+	      } catch (java.io.FileNotFoundException e) {
+	        System.out.println("File not found.");
+	        return;
+	      }
+	      
+	    } 
+	    else {
+	      System.out.println("Usage: nsc <inputfile>");
+	      return;
+	    }
+	    try {
+	      parser = new NonsenseParser(input);
+	      System.out.println("\t.intel_syntax\n\t.section .rodata");
+	      System.out.println(".io_format:\n\t.string \"%d\\12\\0\"");
+	      System.out.println("\t.text\n\t.global main;\n\t.type main, @function");
+	      System.out.println("main:\n\tpush %ebp\n\tmov %ebp, %esp\n\tsub %esp, 64");
+	      System.out.println("\nMY_CODE_START\n");
+	      map = new HashMap<String, Integer>();
+	      parser.program();
+	      System.out.println("\nMY_CODE_END\n");
+	      System.out.println("leave\nret");
+	    } catch (ParseException e) {
+	      System.err.println("Syntax Error: "+e.getMessage());
+	    }
+	}
+
+	public static String getFreeRegister() {
+	  int i = 0;
+	  for (i = 1; i < 6; i++) {
+	    if (regInUse[i] == 0) {
+	      regInUse[i] = 1;
+	      return register[i];
+	    }
+	  }
+	  return "error";
+	}
+	
+}
+
+PARSER_END(NonsenseParser)
+
+SKIP :
+{
+ 	" "
+|	"\r"
+|	"\t"
+|	"\n"
+} 
+
+TOKEN : /* keywords */
+{
+	<BEGIN: "begin">
+    | <END: "end">
+    | <OUTPUT: "output">
+}
+
+TOKEN : /* other lexical tokens */
+{
+ <EQ: "=">
+| <SEMICOLON: ";">
+| <LPAREN: "(">
+| <RPAREN: ")">
+| <PLUS: "+">
+| <MINUS: "-">
+| <TIMES: "*">
+| <DIVIDE: "/">
+| <EXP: "^">
+| <#DIGIT: ["0" - "9"] >
+| <#ALPHA: ["a" - "z"] | ["A" - "Z"] >
+| <ID: <ALPHA> (<ALPHA> | <DIGIT>)*>
+| <INT: "0" | ["1" - "9"](<DIGIT>)* >
+}
+
+void program(): {}
+{
+   <BEGIN> <SEMICOLON> 
+   
+   ( stmt() )*
+
+   <END> <SEMICOLON>
+    
+}
+
+void stmt() : {}
+
+{
+	( 
+		assignment()
+  		| output()
+	)
+	<SEMICOLON>
+
+}
+
+void assignment() : { Token x,y,z; String ret; int i = 0; }
+{
+  
+  (
+    x = <ID>
+    <EQ>
+    expr()
+    {
+      for (i = 0; i < 6; i++) {
+		if (regInUse[i] == 1) {
+		  System.out.println("mov dword ptr [%ebp-" + offset + "], " + register[i]);
+		  map.put(x.image, offset);
+		  regInUse[i] = 0;
+		  offset += 4;
+		}
+      }  
+    }
+  )
+}
+
+void output() : { Token x = null; String ret; }
+{
+	<OUTPUT> <LPAREN>
+	(
+	 ret = expr()
+	) <RPAREN>
+	{
+	  System.out.println("\npush dword ptr [%ebp-" + map.get(ret) + "]\npush offset flat:.io_format");
+	  System.out.println("call printf\nadd %esp, 8\n");
+	}
+}
+
+
+String expr() : { String x, y, addSub, reg = null; int i = 0;}
+{
+  (
+    x = term()
+  )
+  (
+    LOOKAHEAD(2)
+    addSub = addOp()
+    y = term()
+	 {
+	   System.out.println(); 
+	   System.out.println(x + " " + y);
+	   if (map.containsKey(x)) {
+	     if (map.containsKey(y)) {
+	       // Finds an empty register
+	       reg = getFreeRegister();
+	       System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+		   System.out.println(addSub + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+	     } else {
+	       reg = getFreeRegister();
+	       System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+		   System.out.println(addSub + " " + reg + ", " + y);
+	     }
+	   } else {
+	     if (map.containsKey(y)) {
+	       System.out.println(addSub + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
+	     } else {
+	       System.out.println(addSub + " " + x + ", " + y);
+	     }
+	   }
+	 }
+  
+  )*
+  {
+    return x;
+  }
+} 
+
+String term() : { String x, y, mulDiv, reg = null; int i = 0; }
+{
+   (
+     x = nterm()
+   )
+   (
+     LOOKAHEAD(2)
+     mulDiv = mulOp()
+     y = nterm()
+
+     {
+       System.out.println();
+	   if (mulDiv.equals("imul")) {
+	     if (map.containsKey(x)) {
+		     if (map.containsKey(y)) {
+		       // Finds an empty register
+		       reg = getFreeRegister();
+		       System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+		       System.out.println(mulDiv + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+		      
+		       // If x is in a memory location, but y is not
+		     } else {
+			   System.out.println(mulDiv + " " + y + ", dword ptr [%ebp-" + map.get(x) + "]");
+			   reg = y;
+		     }
+		   } else {
+		     if (map.containsKey(y)) {
+		       System.out.println(mulDiv + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
+		     } else {
+		       System.out.println(mulDiv + " " + x + ", " + y);
+		     }
+		     reg = x;
+		   }
+	   } else {
+	     regInUse[0] = 1;
+	     reg = register[0];
+		 if (map.containsKey(x)) {
+		   if (map.containsKey(y)) {
+ 		     System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+	         System.out.println("cdq");
+	         System.out.println(mulDiv + " dword ptr [%ebp-" + map.get(y) + "]");
+		   } else {
+		     System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+	         System.out.println("cdq");
+	         System.out.println(mulDiv + " " + y);
+		   }
+		 } else {
+		   if (map.containsKey(y)) {
+		     System.out.println("mov " + reg + ", " + x);
+	         System.out.println("cdq");
+	         System.out.println(mulDiv + " dword ptr [%ebp-" + map.get(y) + "]");
+		   } else {
+		     System.out.println("mov " + reg + ", " + x);
+	         System.out.println("cdq");
+	         System.out.println(mulDiv + " " + y);
+		   }
+		 }
+	   }
+	   
+	   return reg;
+	 }
+   )*
+
+   {
+     return x;
+   }
+}
+
+String nterm() : { String ret; }
+{
+	(<MINUS>)?
+	(
+	 ret = eterm()
+	  { return ret; }
+	)
+}
+
+String eterm() : { String ret; }
+{
+	(
+	  ret = factor()
+	  { return ret; }
+	) ( <EXP> eterm() )?
+}
+
+String factor() : { Token x = null , y = null; int i = 0; String reg = null;}
+{
+  (
+    x = <INT>
+    {
+      reg = getFreeRegister();  
+      System.out.println("mov " + reg + ", " + x);
+      return reg;
+	}
+  ) 
+  |
+  (
+    y = <ID>
+    {
+      System.out.println("this is = " + y);
+      return y.image;
+    }
+  )
+  | <LPAREN>
+  (
+    x.image = expr()
+    { System.out.println("factor(expr()) = " + x.image); }
+  ) <RPAREN>
+  
+}
+
+
+String addOp() : { Token x = null; }
+{
+	(
+	  x = <PLUS>
+	  {
+	    return "add";
+	  }
+	) 
+	|
+	(
+	  x = <MINUS>
+	  {
+	    return "sub";
+	  }
+	)
+}
+
+String mulOp() : { Token x = null; }
+{
+	(
+	  x = <TIMES>
+	  {
+	    return "imul";
+	  }
+	)
+	|
+	(
+	  x = <DIVIDE>
+	  {
+	    return "idiv";
+	  }
+	)
+}
+
+
+

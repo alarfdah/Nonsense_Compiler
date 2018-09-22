@@ -1,5 +1,5 @@
 begin;
-a = 4;
-c = 6 * a;
-output(c);
+a = 6;
+b = 9;
+c = 12 / a + b * 3;
 end;

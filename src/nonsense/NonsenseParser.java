@@ -44,6 +44,41 @@ public final class NonsenseParser implements NonsenseParserConstants {
             }
         }
 
+        public static String getFreeRegister(int reg) {
+          if (reg == -1) {
+            int i = 0;
+            for (i = 1; i < 6; i++) {
+              if (regInUse[i] == 0) {
+                regInUse[i] = 1;
+                return register[i];
+                }
+              }
+          } else {
+            regInUse[reg] = 1;
+            return register[reg];
+          }
+
+          return "error";
+        }
+
+        public static void freeRegisters() {
+          int i = 0;
+          for (i = 1; i < 6; i++) {
+            if (regInUse[i] == 1) {
+              regInUse[i] = 0;
+            }
+          }
+        }
+
+        public static boolean isInt(String s) {
+            try {
+                Integer.parseInt(s);
+                return true;
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+        }
+
   static final public void program() throws ParseException {
     jj_consume_token(BEGIN);
     jj_consume_token(SEMICOLON);
@@ -81,29 +116,24 @@ public final class NonsenseParser implements NonsenseParserConstants {
   }
 
   static final public void assignment() throws ParseException {
-                      Token x,y,z; String ret; int i = 0;
+                      Token x,y; String expr; int i = 0;
     x = jj_consume_token(ID);
     jj_consume_token(EQ);
-    expr();
-      for (i = 1; i < 6; i++) {
-                if (regInUse[i] == 1) {
-                  System.out.println("mov dword ptr [%ebp-" + offset + "], " + register[i]);
-                  map.put(x.image, offset);
-                  regInUse[i] = 0;
-                  offset += 4;
-                  break;
-                }
-      }
+    expr = expr();
+      System.out.printf("\u005ctmov  dword ptr [%%ebp-%s], %s\u005cn", offset, expr);
+      map.put(x.image, offset);
+      offset += 4;
+      freeRegisters();
   }
 
   static final public void output() throws ParseException {
-                  Token x = null; String ret;
+                  String ret;
     jj_consume_token(OUTPUT);
     jj_consume_token(LPAREN);
     ret = expr();
     jj_consume_token(RPAREN);
-          System.out.println("\u005cnpush dword ptr [%ebp-" + map.get(ret) + "]\u005cnpush offset flat:.io_format");
-          System.out.println("call printf\u005cnadd %esp, 8\u005cn");
+          System.out.println("\u005cn\u005ctpush dword ptr [%ebp-" + map.get(ret) + "]\u005cn\u005ctpush offset flat:.io_format");
+          System.out.println("\u005ctcall printf\u005cn\u005ctadd %esp, 8\u005cn");
   }
 
   static final public String expr() throws ParseException {
@@ -118,36 +148,35 @@ public final class NonsenseParser implements NonsenseParserConstants {
       }
       addSub = addOp();
       y = term();
-           System.out.println();
-           if (map.containsKey(x)) {
-             if (map.containsKey(y)) {
-               // Finds an empty register
-               for (i = 1; i < 6; i++) {
-                 if (regInUse[i] == 0) {
-                   regInUse[i] = 1;
-                   reg = register[i];
-                   break;
-                 }
-               }
-               System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
-                   System.out.println(addSub + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
-             } else {
-                   System.out.println(addSub + " " + y + ", dword ptr [%ebp-" + map.get(x) + "]");
-             }
-           } else {
-             if (map.containsKey(y)) {
-               System.out.println(addSub + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
-             } else {
-               System.out.println(addSub + " " + x + ", " + y);
-             }
-           }
+      reg = getFreeRegister(-1);
+//      System.out.println(x + " ----");
+//      System.out.println(y + " ----");
+
+      // Moving
+      if (isInt(x)) {   // If constant
+        System.out.println("\u005ctmov  " + reg + ", " + x);
+      } else if (x.charAt(0) == '%') {  // If register
+        System.out.println("\u005ctmov  " + reg + ", " + x);
+      } else {  // If memory address
+        System.out.println("\u005ctmov  " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+      }
+
+      // Adding
+      if (isInt(y)) { // If constant
+        System.out.println("\u005ct" + addSub + "  " + reg + ", " + y);
+      } else if (y.charAt(0) == '%') { // If register
+        System.out.println("\u005ct" + addSub + "  " + reg + ", " + y);
+      } else { // If memory address
+        System.out.println("\u005ct" + addSub + "  " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+      }
+      x = reg;
     }
     {if (true) return x;}
     throw new Error("Missing return statement in function");
   }
 
   static final public String term() throws ParseException {
-                  String x, y, mulDiv, reg = null; int i = 0;
+                  String x, y, mulDiv, eax, reg; int i = 0;
     x = nterm();
     label_3:
     while (true) {
@@ -158,48 +187,81 @@ public final class NonsenseParser implements NonsenseParserConstants {
       }
       mulDiv = mulOp();
       y = nterm();
-           System.out.println();
-           if (map.containsKey(x)) {
-             if (map.containsKey(y)) {
-               // Finds an empty register
-               for (i = 1; i < 6; i++) {
-                 if (regInUse[i] == 0) {
-                   regInUse[i] = 1;
-                   reg = register[i];
-                   break;
-                 }
-               }
-               System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
-                   System.out.println(mulDiv + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
-             } else {
-                   System.out.println(mulDiv + " " + y + ", dword ptr [%ebp-" + map.get(x) + "]");
-                   reg = y;
-             }
-           } else {
-             if (map.containsKey(y)) {
-               System.out.println(mulDiv + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
-             } else {
-               System.out.println(mulDiv + " " + x + ", " + y);
-             }
-             reg = x;
-           }
-           {if (true) return reg;}
+       {
+//      System.out.println(x + " ----");
+//      System.out.println(y + " ----");
+
+
+      switch(mulDiv) {
+        case "imul":
+          // Get free register
+          reg = getFreeRegister(-1);
+
+                        // Moving
+              if (isInt(x)) {   // If constant
+                System.out.println("\u005ctmov  " + reg + ", " + x);
+              } else if (x.charAt(0) == '%') { // If register
+                System.out.println("\u005ctmov  " + reg + ", " + x);
+              } else { // If memory address
+                System.out.println("\u005ctmov  " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+              }
+
+              // Multiplying
+              if (isInt(y)) { // If constant
+                System.out.println("\u005ct" + mulDiv + " " + reg + ", " + y);
+              } else if (y.charAt(0) == '%') { // If register
+                System.out.println("\u005ct" + mulDiv + " " + reg + ", " + y);
+              } else { // If memory address
+                System.out.println("\u005ct" + mulDiv + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+              }
+              x = reg;
+        break;
+        case "idiv":
+          // Use %eax
+          eax = getFreeRegister(0);
+          // Moving
+              if (isInt(x)) {   // If constant
+                System.out.println("\u005ctmov  " + eax + ", " + x);
+              } else if (x.charAt(0) == '%') { // If register
+                System.out.println("\u005ctmov  " + eax + ", " + x);
+              } else { // If memory address
+                System.out.println("\u005ctmov  " + eax + ", dword ptr [%ebp-" + map.get(x) + "]");
+              }
+
+              // Dividing
+              if (isInt(y)) { // If constant
+                System.out.println("\u005ctcdq\u005cn\u005ct" + mulDiv + " " + y);
+              } else if (y.charAt(0) == '%') { // If register
+                System.out.println("\u005ctcdq\u005cn\u005ct" + mulDiv + " " + y);
+              } else { // If memory address
+                reg = getFreeRegister(-1);
+                System.out.println("\u005ctmov  " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+                System.out.println("\u005ctcdq\u005cn\u005ct" + mulDiv + " " + reg);
+              }
+              x = eax;
+        break;
+      }
+
+    }
     }
      {if (true) return x;}
     throw new Error("Missing return statement in function");
   }
 
   static final public String nterm() throws ParseException {
-                   String ret;
+                   Token minus = null; String ret;
     switch ((jj_ntk==-1)?jj_ntk():jj_ntk) {
     case MINUS:
-      jj_consume_token(MINUS);
+      minus = jj_consume_token(MINUS);
       break;
     default:
       jj_la1[2] = jj_gen;
       ;
     }
     ret = eterm();
+            if (minus != null) {
+              {if (true) return "-" + ret;}
+            }
             {if (true) return ret;}
     throw new Error("Missing return statement in function");
   }
@@ -207,7 +269,6 @@ public final class NonsenseParser implements NonsenseParserConstants {
   static final public String eterm() throws ParseException {
                    String ret;
     ret = factor();
-            {if (true) return ret;}
     switch ((jj_ntk==-1)?jj_ntk():jj_ntk) {
     case EXP:
       jj_consume_token(EXP);
@@ -217,23 +278,16 @@ public final class NonsenseParser implements NonsenseParserConstants {
       jj_la1[3] = jj_gen;
       ;
     }
+            {if (true) return ret;}
     throw new Error("Missing return statement in function");
   }
 
   static final public String factor() throws ParseException {
-                    Token x = null , y = null; int i = 0; String reg = null;
+                    Token x = null, y = null; int i = 0; String reg = null;
     switch ((jj_ntk==-1)?jj_ntk():jj_ntk) {
     case INT:
       x = jj_consume_token(INT);
-      for (i = 1; i < 6; i++) {
-                if (regInUse[i] == 0) {
-                  regInUse[i] = 1;
-                  reg = register[i];
-                  break;
-                }
-      }
-      System.out.println("mov " + reg + ", " + x);
-      {if (true) return reg;}
+      {if (true) return x.image;}
       break;
     case ID:
       y = jj_consume_token(ID);
@@ -305,14 +359,44 @@ public final class NonsenseParser implements NonsenseParserConstants {
     finally { jj_save(1, xla); }
   }
 
+  static private boolean jj_3R_10() {
+    if (jj_scan_token(TIMES)) return true;
+    return false;
+  }
+
+  static private boolean jj_3R_6() {
+    Token xsp;
+    xsp = jj_scanpos;
+    if (jj_3R_10()) {
+    jj_scanpos = xsp;
+    if (jj_3R_11()) return true;
+    }
+    return false;
+  }
+
+  static private boolean jj_3_2() {
+    if (jj_3R_6()) return true;
+    if (jj_3R_7()) return true;
+    return false;
+  }
+
   static private boolean jj_3R_12() {
     if (jj_3R_13()) return true;
     return false;
   }
 
-  static private boolean jj_3_1() {
-    if (jj_3R_4()) return true;
-    if (jj_3R_5()) return true;
+  static private boolean jj_3R_5() {
+    if (jj_3R_7()) return true;
+    return false;
+  }
+
+  static private boolean jj_3R_9() {
+    if (jj_scan_token(MINUS)) return true;
+    return false;
+  }
+
+  static private boolean jj_3R_16() {
+    if (jj_scan_token(LPAREN)) return true;
     return false;
   }
 
@@ -341,9 +425,9 @@ public final class NonsenseParser implements NonsenseParserConstants {
     return false;
   }
 
-  static private boolean jj_3_2() {
-    if (jj_3R_6()) return true;
-    if (jj_3R_7()) return true;
+  static private boolean jj_3_1() {
+    if (jj_3R_4()) return true;
+    if (jj_3R_5()) return true;
     return false;
   }
 
@@ -352,31 +436,6 @@ public final class NonsenseParser implements NonsenseParserConstants {
     xsp = jj_scanpos;
     if (jj_scan_token(13)) jj_scanpos = xsp;
     if (jj_3R_12()) return true;
-    return false;
-  }
-
-  static private boolean jj_3R_10() {
-    if (jj_scan_token(TIMES)) return true;
-    return false;
-  }
-
-  static private boolean jj_3R_6() {
-    Token xsp;
-    xsp = jj_scanpos;
-    if (jj_3R_10()) {
-    jj_scanpos = xsp;
-    if (jj_3R_11()) return true;
-    }
-    return false;
-  }
-
-  static private boolean jj_3R_5() {
-    if (jj_3R_7()) return true;
-    return false;
-  }
-
-  static private boolean jj_3R_16() {
-    if (jj_scan_token(LPAREN)) return true;
     return false;
   }
 
@@ -395,11 +454,6 @@ public final class NonsenseParser implements NonsenseParserConstants {
     if (jj_3R_16()) return true;
     }
     }
-    return false;
-  }
-
-  static private boolean jj_3R_9() {
-    if (jj_scan_token(MINUS)) return true;
     return false;
   }
 

@@ -51,6 +51,41 @@ public final class NonsenseParser {
 	      System.err.println("Syntax Error: "+e.getMessage());
 	    }
 	}
+
+	public static String getFreeRegister(int reg) {
+	  if (reg == -1) {
+	    int i = 0;
+	    for (i = 1; i < 6; i++) {
+	      if (regInUse[i] == 0) {
+	        regInUse[i] = 1;
+	        return register[i];
+	        }
+	      }
+	  } else {
+	    regInUse[reg] = 1;
+	    return register[reg];
+	  }
+	  
+	  return "error";
+	}
+
+	public static void freeRegisters() {
+	  int i = 0;
+	  for (i = 1; i < 6; i++) {
+	    if (regInUse[i] == 1) {
+	      regInUse[i] = 0;
+	    }
+	  }
+	}
+
+	public static boolean isInt(String s) {
+	    try {
+	        Integer.parseInt(s);
+	        return true;
+	    } catch (NumberFormatException ex) {
+	        return false;
+	    }
+	}
 	
 }
 
@@ -109,36 +144,31 @@ void stmt() : {}
 
 }
 
-void assignment() : { Token x,y,z; String ret; int i = 0; }
+void assignment() : { Token x,y; String expr; int i = 0; }
 {
   
   (
     x = <ID>
     <EQ>
-    expr()
+    expr = expr()
     {
-      for (i = 1; i < 6; i++) {
-		if (regInUse[i] == 1) {
-		  System.out.println("mov dword ptr [%ebp-" + offset + "], " + register[i]);
-		  map.put(x.image, offset);
-		  regInUse[i] = 0;
-		  offset += 4;
-		  break;
-		}
-      }  
+      System.out.printf("\tmov  dword ptr [%%ebp-%s], %s\n", offset, expr);
+      map.put(x.image, offset);
+      offset += 4;
+      freeRegisters();
     }
   )
 }
 
-void output() : { Token x = null; String ret; }
+void output() : { String ret; }
 {
 	<OUTPUT> <LPAREN>
 	(
 	 ret = expr()
 	) <RPAREN>
 	{
-	  System.out.println("\npush dword ptr [%ebp-" + map.get(ret) + "]\npush offset flat:.io_format");
-	  System.out.println("call printf\nadd %esp, 8\n");
+	  System.out.println("\n\tpush dword ptr [%ebp-" + map.get(ret) + "]\n\tpush offset flat:.io_format");
+	  System.out.println("\tcall printf\n\tadd %esp, 8\n");
 	}
 }
 
@@ -146,44 +176,44 @@ void output() : { Token x = null; String ret; }
 String expr() : { String x, y, addSub, reg = null; int i = 0;}
 {
   (    x = term()
+    
   )
   (
     LOOKAHEAD(2)
     addSub = addOp()
     y = term()
-	 {
-	   System.out.println(); 
-	   if (map.containsKey(x)) {
-	     if (map.containsKey(y)) {
-	       // Finds an empty register
-	       for (i = 1; i < 6; i++) {
-	         if (regInUse[i] == 0) {
-	           regInUse[i] = 1;
-	           reg = register[i];
-	           break;
-	         }
-	       } 
-	       System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
-		   System.out.println(addSub + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
-	     } else {
-		   System.out.println(addSub + " " + y + ", dword ptr [%ebp-" + map.get(x) + "]");
-	     }
-	   } else {
-	     if (map.containsKey(y)) {
-	       System.out.println(addSub + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
-	     } else {
-	       System.out.println(addSub + " " + x + ", " + y);
-	     }
-	   }
-	 }
-  
+    {
+      reg = getFreeRegister(-1);
+//      System.out.println(x + " ----");
+//      System.out.println(y + " ----");
+
+      // Moving
+      if (isInt(x)) {	// If constant
+      	System.out.println("\tmov  " + reg + ", " + x);
+      } else if (x.charAt(0) == '%') {	// If register
+      	System.out.println("\tmov  " + reg + ", " + x);
+      } else {	// If memory address
+        System.out.println("\tmov  " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+      }
+
+      // Adding
+      if (isInt(y)) { // If constant
+        System.out.println("\t" + addSub + "  " + reg + ", " + y);
+      } else if (y.charAt(0) == '%') { // If register
+        System.out.println("\t" + addSub + "  " + reg + ", " + y);
+      } else { // If memory address
+        System.out.println("\t" + addSub + "  " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+      }
+      x = reg;  
+    }
+    
   )*
   {
     return x;
   }
 } 
 
-String term() : { String x, y, mulDiv, reg = null; int i = 0; }
+String term() : { String x, y, mulDiv, eax, reg; int i = 0; }
 {
    (
      x = nterm()
@@ -192,35 +222,64 @@ String term() : { String x, y, mulDiv, reg = null; int i = 0; }
      LOOKAHEAD(2)
      mulDiv = mulOp()
      y = nterm()
-
      {
-	   System.out.println(); 
-	   if (map.containsKey(x)) {
-	     if (map.containsKey(y)) {
-	       // Finds an empty register
-	       for (i = 1; i < 6; i++) {
-	         if (regInUse[i] == 0) {
-	           regInUse[i] = 1;
-	           reg = register[i];
-	           break;
-	         }
-	       } 
-	       System.out.println("mov " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
-		   System.out.println(mulDiv + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
-	     } else {
-		   System.out.println(mulDiv + " " + y + ", dword ptr [%ebp-" + map.get(x) + "]");
-		   reg = y;
-	     }
-	   } else {
-	     if (map.containsKey(y)) {
-	       System.out.println(mulDiv + " " + x + ", dword ptr [%ebp-" + map.get(y) + "]");
-	     } else {
-	       System.out.println(mulDiv + " " + x + ", " + y);
-	     }
-	     reg = x;
-	   }
-	   return reg;
-	 }
+       {
+//      System.out.println(x + " ----");
+//      System.out.println(y + " ----");
+
+      
+      switch(mulDiv) {
+        case "imul":
+          // Get free register
+          reg = getFreeRegister(-1);
+      
+			// Moving
+	      if (isInt(x)) {	// If constant
+	      	System.out.println("\tmov  " + reg + ", " + x);
+	      } else if (x.charAt(0) == '%') { // If register
+	      	System.out.println("\tmov  " + reg + ", " + x);
+	      } else { // If memory address
+	        System.out.println("\tmov  " + reg + ", dword ptr [%ebp-" + map.get(x) + "]");
+	      }
+	
+	      // Multiplying
+	      if (isInt(y)) { // If constant
+	        System.out.println("\t" + mulDiv + " " + reg + ", " + y);
+	      } else if (y.charAt(0) == '%') { // If register
+	        System.out.println("\t" + mulDiv + " " + reg + ", " + y);
+	      } else { // If memory address
+	        System.out.println("\t" + mulDiv + " " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+	      }
+	      x = reg;
+        break;
+        case "idiv":
+          // Use %eax
+          eax = getFreeRegister(0);
+          // Moving
+	      if (isInt(x)) {	// If constant
+	      	System.out.println("\tmov  " + eax + ", " + x);
+	      } else if (x.charAt(0) == '%') { // If register
+	      	System.out.println("\tmov  " + eax + ", " + x);
+	      } else { // If memory address
+	        System.out.println("\tmov  " + eax + ", dword ptr [%ebp-" + map.get(x) + "]");
+	      }
+
+	      // Dividing
+	      if (isInt(y)) { // If constant
+	        System.out.println("\tcdq\n\t" + mulDiv + " " + y);
+	      } else if (y.charAt(0) == '%') { // If register
+	        System.out.println("\tcdq\n\t" + mulDiv + " " + y);
+	      } else { // If memory address
+	      	reg = getFreeRegister(-1);
+	      	System.out.println("\tmov  " + reg + ", dword ptr [%ebp-" + map.get(y) + "]");
+	        System.out.println("\tcdq\n\t" + mulDiv + " " + reg);
+	      }
+	      x = eax;
+        break;
+      }
+        
+    }
+     }
    )*
 
    {
@@ -228,48 +287,47 @@ String term() : { String x, y, mulDiv, reg = null; int i = 0; }
    }
 }
 
-String nterm() : { String ret; }
+String nterm() : { Token minus = null; String ret; }
 {
-	(<MINUS>)?
+	(
+	  minus = <MINUS>
+	)?
 	(
 	 ret = eterm()
-	  { return ret; }
+	  {
+	    if (minus != null) {
+	      return "-" + ret;
+	    }
+	    return ret;
+	  }
 	)
 }
 
 String eterm() : { String ret; }
 {
 	(	  ret = factor()
-	  { return ret; }
 	) ( <EXP> eterm() )?
+	{
+	    return ret;
+	}
 }
 
-String factor() : { Token x = null , y = null; int i = 0; String reg = null;}
+String factor() : { Token x = null, y = null; int i = 0; String reg = null;}
 {
   (    x = <INT>
-    {
-      for (i = 1; i < 6; i++) {
-		if (regInUse[i] == 0) {
-		  regInUse[i] = 1;
-		  reg = register[i];
-		  break;
-		}
-      }  
-      System.out.println("mov " + reg + ", " + x);
-      return reg;
-	}
+    { return x.image; }
   ) 
   |
   (
     y = <ID>
-    {
-      return y.image;
-    }
+    { return y.image; }
   )
   | <LPAREN>
   (
     x.image = expr()
-    { System.out.println("factor(expr()) = " + x.image); }
+    {
+      System.out.println("factor(expr()) = " + x.image);
+    }
   ) <RPAREN>
   
 }
